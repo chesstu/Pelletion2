@@ -1,6 +1,5 @@
 import { storage } from '../server/storage';
 import type { Request, Response } from 'express';
-import { insertBattleRequestSchema, updateBattleRequestStatusSchema } from '../shared/schema';
 import { randomBytes } from 'crypto';
 import { sendBattleRequestEmail } from '../server/services/emailService';
 
@@ -22,29 +21,34 @@ export default async function handler(req: Request, res: Response) {
       try {
         console.log("Received battle request data:", JSON.stringify(req.body));
         
-        // Validate the request body
-        const validatedData = insertBattleRequestSchema.parse(req.body);
-        console.log("Parsed battle request data:", JSON.stringify(validatedData));
-        
         // Generate a unique token for this request
         const token = randomBytes(32).toString('hex');
         
-        // Add the token and set status to pending
+        // Extract data from request body directly, with fallbacks for safety
         const requestData = {
-          ...validatedData,
+          name: req.body.name || 'Anonymous',
+          email: req.body.email || 'no-email@example.com',
+          twitchUsername: req.body.twitchUsername || '',
+          game: req.body.game || 'Not specified',
+          notes: req.body.notes || '',
+          requestedDate: new Date(req.body.requestedDate || Date.now()),
+          requestedTime: req.body.requestedTime || 'Not specified',
           token,
           status: 'pending',
         };
+        
+        console.log("Processed battle request data:", JSON.stringify(requestData));
         
         // Create the battle request
         const createdRequest = await storage.createBattleRequest(requestData);
         console.log(`Battle request created with ID: ${createdRequest.id}`);
         
-        // Send email notification
+        // Send email notification (don't await)
         try {
           console.log(`Sending battle request notification to admin for ${createdRequest.name}'s request`);
-          await sendBattleRequestEmail(createdRequest);
-          console.log("Battle request email sent successfully to admin");
+          sendBattleRequestEmail(createdRequest).catch(err => {
+            console.error("Async email error:", err);
+          });
         } catch (emailError) {
           console.error("Failed to send email notification:", emailError);
           // Continue anyway - don't fail the request if email fails
@@ -53,54 +57,9 @@ export default async function handler(req: Request, res: Response) {
         return res.status(201).json(createdRequest);
       } catch (error) {
         console.error("Error creating battle request:", error);
-        
-        // Handle validation errors
-        if (error.errors) {
-          console.error("Validation errors:", JSON.stringify(error.errors));
-          return res.status(400).json({
-            error: "Invalid request data",
-            details: error.errors,
-          });
-        }
-        
         return res.status(500).json({ 
           error: "Failed to create battle request",
           message: error.message || "Unknown error" 
-        });
-      }
-    }
-    
-    // PATCH request to update battle request status (used in API routes for Vercel)
-    else if (req.method === 'PATCH') {
-      try {
-        const { token, status } = updateBattleRequestStatusSchema.parse(req.body);
-        console.log(`Updating battle request status for token: ${token} to: ${status}`);
-        
-        // Update the battle request status
-        const updatedRequest = await storage.updateBattleRequestStatus(token, status);
-        
-        if (!updatedRequest) {
-          console.error(`Battle request with token ${token} not found`);
-          return res.status(404).json({ error: "Battle request not found" });
-        }
-        
-        console.log(`Battle request status updated to ${status} for ID: ${updatedRequest.id}`);
-        return res.json(updatedRequest);
-      } catch (error) {
-        console.error("Error updating battle request:", error);
-        
-        // Handle validation errors
-        if (error.errors) {
-          console.error("Validation errors:", JSON.stringify(error.errors));
-          return res.status(400).json({
-            error: "Invalid request data",
-            details: error.errors,
-          });
-        }
-        
-        return res.status(500).json({ 
-          error: "Failed to update battle request",
-          message: error.message || "Unknown error"
         });
       }
     }
@@ -109,7 +68,18 @@ export default async function handler(req: Request, res: Response) {
     else if (req.method === 'POST' && req.url?.includes('update-status')) {
       try {
         console.log("Received status update data:", JSON.stringify(req.body));
-        const { token, status } = updateBattleRequestStatusSchema.parse(req.body);
+        
+        // Extract data directly from the request body
+        const token = req.body.token;
+        const status = req.body.status;
+        
+        if (!token || !status) {
+          return res.status(400).json({ error: "Token and status are required" });
+        }
+        
+        if (!['pending', 'confirmed', 'rejected'].includes(status)) {
+          return res.status(400).json({ error: "Status must be 'pending', 'confirmed', or 'rejected'" });
+        }
         
         // Update the battle request status
         const updatedRequest = await storage.updateBattleRequestStatus(token, status);
@@ -123,16 +93,6 @@ export default async function handler(req: Request, res: Response) {
         return res.json(updatedRequest);
       } catch (error) {
         console.error("Error updating battle request status:", error);
-        
-        // Handle validation errors
-        if (error.errors) {
-          console.error("Validation errors:", JSON.stringify(error.errors));
-          return res.status(400).json({
-            error: "Invalid request data",
-            details: error.errors,
-          });
-        }
-        
         return res.status(500).json({ 
           error: "Failed to update battle request status",
           message: error.message || "Unknown error"
