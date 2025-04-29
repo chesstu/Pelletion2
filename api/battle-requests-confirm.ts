@@ -1,6 +1,163 @@
-import { storage } from './storage';
 import type { Request, Response } from 'express';
-import { sendConfirmationEmail, sendRejectionEmail } from './emailService';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import ws from 'ws';
+import { Resend } from 'resend';
+
+// Set up WebSocket for Neon database
+neonConfig.webSocketConstructor = ws;
+
+// Initialize database connection
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set");
+}
+
+// Initialize Resend for email
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Create database connection
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
+
+// Format date for email display
+function formatDate(date: Date | string): string {
+  let dateObj: Date;
+  try {
+    if (date instanceof Date) {
+      dateObj = date;
+    } else {
+      dateObj = new Date(date);
+    }
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return String(date);
+  }
+}
+
+// Get battle request by token
+async function getBattleRequestByToken(token: string) {
+  try {
+    const result = await db.execute(
+      `SELECT * FROM "battleRequests" WHERE "token" = $1 LIMIT 1`,
+      [token]
+    );
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error fetching battle request by token:', error);
+    return null;
+  }
+}
+
+// Update battle request status
+async function updateBattleRequestStatus(token: string, status: string) {
+  try {
+    const result = await db.execute(
+      `UPDATE "battleRequests" SET "status" = $1 WHERE "token" = $2 RETURNING *`,
+      [status, token]
+    );
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error updating battle request:', error);
+    return null;
+  }
+}
+
+// Send confirmation email
+async function sendConfirmationEmail(request: any): Promise<void> {
+  if (!process.env.RESEND_API_KEY) {
+    console.log("Skipping email: RESEND_API_KEY not configured");
+    return;
+  }
+
+  const formattedDate = formatDate(request.requestedDate);
+  
+  try {
+    await resend.emails.send({
+      from: 'Pelletion Battle Confirmation <onboarding@resend.dev>',
+      to: [request.email],
+      subject: `Battle Request Confirmed - ${formattedDate} at ${request.requestedTime}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #16a34a;">Battle Request Confirmed!</h1>
+          
+          <p>Hi ${request.name},</p>
+          
+          <p>Great news! Your battle request has been <strong>confirmed</strong>.</p>
+          
+          <div style="background-color: #f4f4f5; padding: 20px; border-radius: 5px; margin: 20px 0;">
+            <p><strong>Date:</strong> ${formattedDate}</p>
+            <p><strong>Time:</strong> ${request.requestedTime}</p>
+            <p><strong>Game:</strong> ${request.game}</p>
+          </div>
+          
+          <p>Please make sure you're online and ready at the scheduled time. If you need to cancel, please contact us as soon as possible.</p>
+          
+          <p>See you on the battlefield!</p>
+          
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          
+          <p style="color: #6b7280; font-size: 14px;">
+            © ${new Date().getFullYear()} Pelletion. All rights reserved.
+          </p>
+        </div>
+      `,
+    });
+    
+    console.log(`Confirmation email sent to ${request.email}`);
+  } catch (error) {
+    console.error('Error sending confirmation email:', error);
+  }
+}
+
+// Send rejection email
+async function sendRejectionEmail(request: any): Promise<void> {
+  if (!process.env.RESEND_API_KEY) {
+    console.log("Skipping email: RESEND_API_KEY not configured");
+    return;
+  }
+
+  const formattedDate = formatDate(request.requestedDate);
+  
+  try {
+    await resend.emails.send({
+      from: 'Pelletion Battle Request <onboarding@resend.dev>',
+      to: [request.email],
+      subject: `Battle Request - Unable to Accommodate`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #6d28d9;">Battle Request Status Update</h1>
+          
+          <p>Hi ${request.name},</p>
+          
+          <p>Thank you for your interest in battling with Pelletion.</p>
+          
+          <p>Unfortunately, I won't be able to accommodate your request for <strong>${formattedDate}</strong> at <strong>${request.requestedTime}</strong>.</p>
+          
+          <p>Please feel free to submit another request for a different date and time. I look forward to the opportunity to battle with you soon!</p>
+          
+          <a href="https://pelletion.vercel.app" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #6d28d9; color: white; text-decoration: none; border-radius: 5px;">Submit New Request</a>
+          
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          
+          <p style="color: #6b7280; font-size: 14px;">
+            © ${new Date().getFullYear()} Pelletion. All rights reserved.
+          </p>
+        </div>
+      `,
+    });
+    
+    console.log(`Rejection email sent to ${request.email}`);
+  } catch (error) {
+    console.error('Error sending rejection email:', error);
+  }
+}
 
 export default async function handler(req: Request, res: Response) {
   // Only allow GET requests
@@ -23,7 +180,7 @@ export default async function handler(req: Request, res: Response) {
     
     try {
       // Retrieve the battle request
-      const battleRequest = await storage.getBattleRequestByToken(token);
+      const battleRequest = await getBattleRequestByToken(token);
       
       if (!battleRequest) {
         console.log(`Battle request with token ${token} not found`);
@@ -34,7 +191,7 @@ export default async function handler(req: Request, res: Response) {
       const newStatus = action === 'confirm' ? 'confirmed' : 'rejected';
       console.log(`Updating battle request status to: ${newStatus}`);
       
-      const updatedRequest = await storage.updateBattleRequestStatus(token, newStatus);
+      const updatedRequest = await updateBattleRequestStatus(token, newStatus);
       
       if (!updatedRequest) {
         console.error(`Failed to update battle request with token ${token}`);
@@ -261,5 +418,8 @@ export default async function handler(req: Request, res: Response) {
       </body>
       </html>
     `);
+  } finally {
+    // Always ensure we release the database connection
+    // pool.end(); // Don't end the pool in serverless functions
   }
 }
