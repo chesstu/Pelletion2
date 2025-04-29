@@ -43,10 +43,15 @@ function formatDate(date: Date | string): string {
 // Get battle request by token
 async function getBattleRequestByToken(token: string) {
   try {
-    const result = await db.execute(
-      `SELECT * FROM "battleRequests" WHERE "token" = $1 LIMIT 1`,
-      [token]
-    );
+    // Use direct SQL with properly quoted values
+    const escapedToken = token.replace(/'/g, "''");
+    
+    const result = await db.execute(`
+      SELECT * FROM "battleRequests" 
+      WHERE "token" = '${escapedToken}' 
+      LIMIT 1
+    `);
+    
     return result.rows[0];
   } catch (error) {
     console.error('Error fetching battle request by token:', error);
@@ -57,10 +62,16 @@ async function getBattleRequestByToken(token: string) {
 // Update battle request status
 async function updateBattleRequestStatus(token: string, status: string) {
   try {
-    const result = await db.execute(
-      `UPDATE "battleRequests" SET "status" = $1 WHERE "token" = $2 RETURNING *`,
-      [status, token]
-    );
+    // Use direct SQL with properly quoted values
+    const escapedToken = token.replace(/'/g, "''");
+    const escapedStatus = status.replace(/'/g, "''");
+    
+    const result = await db.execute(`
+      UPDATE "battleRequests" 
+      SET "status" = '${escapedStatus}' 
+      WHERE "token" = '${escapedToken}' 
+      RETURNING *
+    `);
     
     return result.rows[0];
   } catch (error) {

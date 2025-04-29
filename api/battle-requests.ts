@@ -123,23 +123,39 @@ async function createBattleRequest(data: any) {
       requestedDate = new Date();
     }
 
-    // Create the battle request
-    const result = await db.execute(
-      `INSERT INTO "battleRequests" ("name", "email", "twitchUsername", "game", "notes", "requestedDate", "requestedTime", "token", "status") 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
-       RETURNING *`,
-      [
-        data.name,
-        data.email,
-        data.twitchUsername,
-        data.game,
-        data.notes,
-        requestedDate,
-        data.requestedTime,
-        data.token,
-        data.status
-      ]
-    );
+    console.log("Inserting battle request with values:", {
+      name: data.name,
+      email: data.email,
+      twitchUsername: data.twitchUsername,
+      game: data.game,
+      notes: data.notes,
+      requestedDate: requestedDate.toISOString(),
+      requestedTime: data.requestedTime,
+      token: data.token,
+      status: data.status
+    });
+
+    // Create the battle request using direct SQL with properly quoted values
+    const name = data.name.replace(/'/g, "''"); // SQL escape quotes
+    const email = data.email.replace(/'/g, "''");
+    const twitchUsername = data.twitchUsername.replace(/'/g, "''");
+    const game = data.game.replace(/'/g, "''");
+    const notes = data.notes ? data.notes.replace(/'/g, "''") : '';
+    const requestedTime = data.requestedTime.replace(/'/g, "''");
+    const token = data.token;
+    const status = data.status;
+    
+    const result = await db.execute(`
+      INSERT INTO "battleRequests" 
+        ("name", "email", "twitchUsername", "game", "notes", "requestedDate", "requestedTime", "token", "status") 
+      VALUES 
+        ('${name}', '${email}', '${twitchUsername}', '${game}', '${notes}', '${requestedDate.toISOString()}', '${requestedTime}', '${token}', '${status}') 
+      RETURNING *
+    `);
+    
+    if (!result.rows || result.rows.length === 0) {
+      throw new Error('Failed to create battle request - no row returned');
+    }
     
     return result.rows[0];
   } catch (error) {
@@ -151,10 +167,16 @@ async function createBattleRequest(data: any) {
 // Update battle request status
 async function updateBattleRequestStatus(token: string, status: string) {
   try {
-    const result = await db.execute(
-      `UPDATE "battleRequests" SET "status" = $1 WHERE "token" = $2 RETURNING *`,
-      [status, token]
-    );
+    // Use direct SQL with properly quoted values
+    const escapedToken = token.replace(/'/g, "''");
+    const escapedStatus = status.replace(/'/g, "''");
+    
+    const result = await db.execute(`
+      UPDATE "battleRequests" 
+      SET "status" = '${escapedStatus}' 
+      WHERE "token" = '${escapedToken}' 
+      RETURNING *
+    `);
     
     return result.rows[0];
   } catch (error) {

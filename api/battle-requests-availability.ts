@@ -24,10 +24,16 @@ const db = drizzle(pool);
 // Get all battle requests
 async function getBattleRequests() {
   try {
-    // SQL query to get all battle requests
-    const result = await db.execute(
-      `SELECT * FROM "battleRequests" ORDER BY "requestedDate" ASC`
-    );
+    // Direct SQL query to get all battle requests
+    const result = await db.execute(`
+      SELECT * FROM "battleRequests" 
+      ORDER BY "requestedDate" ASC
+    `);
+    
+    if (!result.rows) {
+      return [];
+    }
+    
     return result.rows;
   } catch (error) {
     console.error('Error fetching battle requests:', error);
