@@ -177,9 +177,37 @@ export default async function handler(req: Request, res: Response) {
   }
   
   try {
-    const { token, action } = req.query;
+    console.log("Battle request confirmation handler called with URL:", req.url);
+    console.log("Request query parameters:", JSON.stringify(req.query));
     
-    if (!token || typeof token !== 'string') {
+    // Extract token and action from the URL
+    let token = '';
+    let action = '';
+    
+    // First, check standard query parameters
+    if (req.query.token && req.query.action) {
+      token = String(req.query.token);
+      action = String(req.query.action);
+    } 
+    // If not found in query, try parsing from the URL path
+    else if (req.url) {
+      // Extract token from URL path format like /api/battle-requests-confirm?token=XXX&action=confirm
+      const tokenMatch = req.url.match(/token=([^&]+)/);
+      if (tokenMatch && tokenMatch[1]) {
+        token = tokenMatch[1];
+      }
+      
+      // Extract action from URL
+      const actionMatch = req.url.match(/action=([^&]+)/);
+      if (actionMatch && actionMatch[1]) {
+        action = actionMatch[1];
+      }
+    }
+    
+    console.log("Extracted token:", token);
+    console.log("Extracted action:", action);
+    
+    if (!token) {
       return res.status(400).json({ error: "Missing token parameter" });
     }
     

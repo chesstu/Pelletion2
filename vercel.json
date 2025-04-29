@@ -4,7 +4,24 @@
   "outputDirectory": "dist/public",
   "framework": "vite",
   "rewrites": [
+    { "source": "/api/battle-requests-confirm", "destination": "/api/battle-requests-confirm" },
+    { "source": "/api/battle-requests-availability", "destination": "/api/battle-requests-availability" },
+    { "source": "/api/battle-requests", "destination": "/api/battle-requests" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/" }
-  ]
+  ],
+  "functions": {
+    "api/battle-requests-confirm.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/battle-requests.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/battle-requests-availability.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
 }
