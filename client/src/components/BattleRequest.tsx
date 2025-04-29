@@ -74,17 +74,38 @@ const BattleRequest: React.FC = () => {
   const { data: availabilityData, isLoading: isLoadingAvailability } = useQuery<TimeSlot[]>({
     queryKey: ['/api/battle-requests-availability', selectedDate?.toISOString()],
     queryFn: async () => {
-      if (!selectedDate) return [];
-      const dateParam = selectedDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      const response = await fetch(`/api/battle-requests-availability?date=${dateParam}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Error fetching time slots:", errorData);
-        throw new Error(errorData.error || 'Failed to fetch time slots');
+      if (!selectedDate) {
+        console.log("No date selected, returning empty time slots.");
+        return [];
       }
       
-      return response.json();
+      const dateParam = selectedDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      console.log("Fetching time slots for date:", dateParam);
+      
+      try {
+        const response = await fetch(`/api/battle-requests-availability?date=${dateParam}`);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Error fetching time slots:", errorData);
+          throw new Error(errorData.error || 'Failed to fetch time slots');
+        }
+        
+        const data = await response.json();
+        console.log("Received time slots:", data);
+        return data;
+      } catch (error) {
+        console.error("Exception fetching time slots:", error);
+        
+        // Provide default time slots if API fails
+        const defaultSlots = [
+          "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM", "6:00 PM", 
+          "7:00 PM", "8:00 PM", "9:00 PM", "10:00 PM", "11:00 PM"
+        ].map(time => ({ time, available: true }));
+        
+        console.log("Using default available time slots:", defaultSlots);
+        return defaultSlots;
+      }
     },
     enabled: !!selectedDate, // Only run this query when a date is selected
   });
@@ -96,7 +117,10 @@ const BattleRequest: React.FC = () => {
 
   // Update time slots when availability data changes
   useEffect(() => {
+    console.log("useEffect triggered - availabilityData changed:", availabilityData);
+    
     if (availabilityData && Array.isArray(availabilityData)) {
+      console.log("Setting time slots from API data");
       setTimeSlots(availabilityData);
       
       // Clear the selected time if it's no longer available
@@ -107,16 +131,20 @@ const BattleRequest: React.FC = () => {
         );
         
         if (!isStillAvailable) {
+          console.log("Selected time is no longer available, clearing selection");
           form.setValue('requestedTime', '', { shouldValidate: true });
         }
       }
     } else if (selectedDate) {
+      console.log("No availability data but date is selected, setting default time slots");
+      
       // Default time slots (2PM to midnight) while loading
       const defaultSlots = [
         "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM", "6:00 PM", 
         "7:00 PM", "8:00 PM", "9:00 PM", "10:00 PM", "11:00 PM"
-      ].map(time => ({ time, available: false }));
+      ].map(time => ({ time, available: true })); // Mark them all as available instead of false
       
+      console.log("Setting default time slots:", defaultSlots);
       setTimeSlots(defaultSlots);
     }
   }, [availabilityData, selectedDate]);
