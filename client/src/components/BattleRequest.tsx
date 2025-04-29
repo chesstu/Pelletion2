@@ -72,11 +72,11 @@ const BattleRequest: React.FC = () => {
 
   // Fetch available time slots when a date is selected
   const { data: availabilityData, isLoading: isLoadingAvailability } = useQuery<TimeSlot[]>({
-    queryKey: ['/api/battle-requests/availability', selectedDate?.toISOString()],
+    queryKey: ['/api/battle-requests-availability', selectedDate?.toISOString()],
     queryFn: async () => {
       if (!selectedDate) return [];
       const dateParam = selectedDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      const response = await fetch(`/api/battle-requests/availability?date=${dateParam}`);
+      const response = await fetch(`/api/battle-requests-availability?date=${dateParam}`);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -159,7 +159,7 @@ const BattleRequest: React.FC = () => {
         
         // Also invalidate availability data for this date
         queryClient.invalidateQueries({ 
-          queryKey: ['/api/battle-requests/availability', selectedDate.toISOString()]
+          queryKey: ['/api/battle-requests-availability', selectedDate.toISOString()]
         });
       }
       

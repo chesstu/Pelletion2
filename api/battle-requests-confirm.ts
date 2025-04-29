@@ -1,0 +1,134 @@
+import { storage } from '../server/storage';
+import type { Request, Response } from 'express';
+import { sendConfirmationEmail, sendRejectionEmail } from '../server/services/emailService';
+
+export default async function handler(req: Request, res: Response) {
+  // Only allow GET requests
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+  
+  try {
+    const { token, action } = req.query;
+    
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: "Missing token parameter" });
+    }
+    
+    if (!action || (action !== 'confirm' && action !== 'reject')) {
+      return res.status(400).json({ error: "Invalid action parameter. Must be 'confirm' or 'reject'" });
+    }
+    
+    // Retrieve the battle request
+    const battleRequest = await storage.getBattleRequestByToken(token);
+    
+    if (!battleRequest) {
+      return res.status(404).json({ error: "Battle request not found" });
+    }
+    
+    // Update the status based on the action
+    const newStatus = action === 'confirm' ? 'confirmed' : 'rejected';
+    const updatedRequest = await storage.updateBattleRequestStatus(token, newStatus);
+    
+    if (!updatedRequest) {
+      return res.status(500).json({ error: "Failed to update battle request" });
+    }
+    
+    // Send appropriate email
+    try {
+      if (action === 'confirm') {
+        await sendConfirmationEmail(updatedRequest);
+      } else {
+        await sendRejectionEmail(updatedRequest);
+      }
+    } catch (emailError) {
+      console.error("Failed to send email:", emailError);
+      // Continue anyway - we already updated the status
+    }
+    
+    // Redirect to a success page or return a success message
+    return res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Battle Request ${action === 'confirm' ? 'Confirmed' : 'Rejected'}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 2rem;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.5;
+            background-color: #121212;
+            color: #ffffff;
+          }
+          h1 {
+            color: ${action === 'confirm' ? '#22c55e' : '#ef4444'};
+          }
+          .card {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid #333;
+          }
+          .button {
+            display: inline-block;
+            margin-top: 1rem;
+            background-color: #7c3aed;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            text-decoration: none;
+          }
+          .details {
+            margin-top: 1rem;
+          }
+          .details p {
+            margin: 0.5rem 0;
+          }
+          .label {
+            color: #a1a1aa;
+            font-size: 0.875rem;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Battle Request ${action === 'confirm' ? 'Confirmed' : 'Rejected'}</h1>
+        <div class="card">
+          <p>You have successfully ${action === 'confirm' ? 'confirmed' : 'rejected'} the battle request from ${updatedRequest.name}.</p>
+          
+          <div class="details">
+            <p class="label">Date:</p>
+            <p>${new Date(updatedRequest.requestedDate).toLocaleDateString()}</p>
+            
+            <p class="label">Time:</p>
+            <p>${updatedRequest.requestedTime}</p>
+            
+            <p class="label">Challenger:</p>
+            <p>${updatedRequest.name} (${updatedRequest.twitchUsername})</p>
+            
+            <p class="label">Game:</p>
+            <p>${updatedRequest.game}</p>
+            
+            ${updatedRequest.notes ? `
+            <p class="label">Notes:</p>
+            <p>${updatedRequest.notes}</p>
+            ` : ''}
+          </div>
+          
+          <p>An email notification has been sent to ${updatedRequest.name} to inform them of your decision.</p>
+        </div>
+        
+        <a href="https://pelletion.vercel.app" class="button">Return to Website</a>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error("Error processing battle request action:", error);
+    return res.status(500).json({ error: "Failed to process the request" });
+  }
+}
