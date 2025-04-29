@@ -51,7 +51,7 @@ async function sendBattleRequestEmail(request: any): Promise<void> {
   }
 
   const formattedDate = formatDate(request.requestedDate);
-  const confirmUrl = `https://pelletion.vercel.app/api/battle-requests-confirm?token=${request.token}&action=confirm`;
+  const confirmUrl = `https://pelletion.vercel.app/api/battle-requests-confirm?token=${request.token}&action=accept`;
   const rejectUrl = `https://pelletion.vercel.app/api/battle-requests-confirm?token=${request.token}&action=reject`;
 
   try {

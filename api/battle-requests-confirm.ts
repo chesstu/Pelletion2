@@ -211,8 +211,13 @@ export default async function handler(req: Request, res: Response) {
       return res.status(400).json({ error: "Missing token parameter" });
     }
     
-    if (!action || (action !== 'confirm' && action !== 'reject')) {
-      return res.status(400).json({ error: "Invalid action parameter. Must be 'confirm' or 'reject'" });
+    if (!action || (action !== 'accept' && action !== 'confirm' && action !== 'reject')) {
+      return res.status(400).json({ error: "Invalid action parameter. Must be 'accept', 'confirm', or 'reject'" });
+    }
+    
+    // Normalize the action (handle both 'accept' and 'confirm')
+    if (action === 'accept') {
+      action = 'confirm';
     }
     
     console.log(`Processing battle request action: ${action} for token: ${token}`);

@@ -5,6 +5,7 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/api/battle-requests-confirm", "destination": "/api/battle-requests-confirm" },
+    { "source": "/api/battle-requests-confirm/:path*", "destination": "/api/battle-requests-confirm" },
     { "source": "/api/battle-requests-availability", "destination": "/api/battle-requests-availability" },
     { "source": "/api/battle-requests", "destination": "/api/battle-requests" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
@@ -23,5 +24,10 @@
       "memory": 1024,
       "maxDuration": 10
     }
-  }
+  },
+  "routes": [
+    { "src": "/api/battle-requests-confirm", "dest": "/api/battle-requests-confirm.ts" },
+    { "src": "/api/battle-requests", "dest": "/api/battle-requests.ts" },
+    { "src": "/api/battle-requests-availability", "dest": "/api/battle-requests-availability.ts" }
+  ]
 }

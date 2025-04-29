@@ -29,11 +29,49 @@ const Admin: React.FC = () => {
   
   // Update battle request status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ token, status }: { token: string, status: string }) => {
-      const response = await apiRequest('POST', '/api/battle-requests/update-status', { token, status });
-      return response.json();
+    mutationFn: async ({ token, status, id }: { token: string, status: string, id?: number }) => {
+      // Use ID-based update from admin panel
+      if (id) {
+        console.log(`Updating battle request ID ${id} to status: ${status}`);
+        try {
+          // Use direct fetch to have more control
+          const response = await fetch('/api/battle-requests', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ id, status })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Server error:', errorData);
+            throw new Error(errorData.message || 'Failed to update');
+          }
+          
+          return await response.json();
+        } catch (error) {
+          console.error('Update error:', error);
+          throw error;
+        }
+      }
+      
+      // Use token-based update from URL/email links
+      console.log(`Updating battle request token ${token} to status: ${status}`);
+      try {
+        const response = await apiRequest('POST', '/api/battle-requests', { token, status });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to update');
+        }
+        return await response.json();
+      } catch (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('Status updated successfully:', data);
       queryClient.invalidateQueries({ queryKey: ['/api/battle-requests'] });
       toast({
         title: "Status Updated",
@@ -43,10 +81,11 @@ const Admin: React.FC = () => {
       // Clear URL parameters after processing
       window.history.replaceState({}, document.title, window.location.pathname);
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error('Update error in mutation:', error);
       toast({
         title: "Update Failed",
-        description: "Failed to update battle request status. Please try again.",
+        description: error.message || "Failed to update battle request status. Please try again.",
         variant: "destructive",
       });
     },
@@ -69,16 +108,16 @@ const Admin: React.FC = () => {
   const rejectedRequests = battleRequests?.filter(req => req.status === 'rejected') || [];
 
   // Handle battle request actions
-  const handleAccept = (token: string) => {
-    updateStatusMutation.mutate({ token, status: 'confirmed' });
+  const handleAccept = (token: string, id: number) => {
+    updateStatusMutation.mutate({ token, status: 'confirmed', id });
   };
 
-  const handleReject = (token: string) => {
-    updateStatusMutation.mutate({ token, status: 'rejected' });
+  const handleReject = (token: string, id: number) => {
+    updateStatusMutation.mutate({ token, status: 'rejected', id });
   };
 
   // Format date
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | Date) => {
     return format(new Date(dateString), 'MMMM d, yyyy');
   };
 
@@ -157,7 +196,7 @@ const Admin: React.FC = () => {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => handleReject(request.token)}
+              onClick={() => handleReject(request.token, request.id)}
               disabled={updateStatusMutation.isPending}
               className="border-red-700 hover:bg-red-900/50"
             >
@@ -166,7 +205,7 @@ const Admin: React.FC = () => {
             </Button>
             <Button 
               size="sm" 
-              onClick={() => handleAccept(request.token)}
+              onClick={() => handleAccept(request.token, request.id)}
               disabled={updateStatusMutation.isPending}
               className="bg-green-700 hover:bg-green-800"
             >
