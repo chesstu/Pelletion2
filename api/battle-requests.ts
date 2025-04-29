@@ -95,6 +95,98 @@ async function sendBattleRequestEmail(request: any): Promise<void> {
   }
 }
 
+// Send confirmation email to the requester
+async function sendConfirmationEmail(request: any): Promise<void> {
+  if (!process.env.RESEND_API_KEY) {
+    console.log("Skipping email: RESEND_API_KEY not configured");
+    return;
+  }
+
+  const formattedDate = formatDate(request.requestedDate);
+  
+  try {
+    console.log(`Sending confirmation email to ${request.email}`);
+    await resend.emails.send({
+      from: 'Pelletion Battle Confirmation <onboarding@resend.dev>',
+      to: [request.email],
+      subject: `Battle Request Confirmed - ${formattedDate} at ${request.requestedTime}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #16a34a;">Battle Request Confirmed!</h1>
+          
+          <p>Hi ${request.name},</p>
+          
+          <p>Great news! Your battle request has been <strong>confirmed</strong>.</p>
+          
+          <div style="background-color: #f4f4f5; padding: 20px; border-radius: 5px; margin: 20px 0;">
+            <p><strong>Date:</strong> ${formattedDate}</p>
+            <p><strong>Time:</strong> ${request.requestedTime}</p>
+            <p><strong>Game:</strong> ${request.game}</p>
+          </div>
+          
+          <p>Please make sure you're online and ready at the scheduled time. If you need to cancel, please contact us as soon as possible.</p>
+          
+          <p>See you on the battlefield!</p>
+          
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          
+          <p style="color: #6b7280; font-size: 14px;">
+            © ${new Date().getFullYear()} Pelletion. All rights reserved.
+          </p>
+        </div>
+      `,
+    });
+    
+    console.log(`Confirmation email sent to ${request.email}`);
+  } catch (error) {
+    console.error('Error sending confirmation email:', error);
+  }
+}
+
+// Send rejection email to the requester
+async function sendRejectionEmail(request: any): Promise<void> {
+  if (!process.env.RESEND_API_KEY) {
+    console.log("Skipping email: RESEND_API_KEY not configured");
+    return;
+  }
+
+  const formattedDate = formatDate(request.requestedDate);
+  
+  try {
+    console.log(`Sending rejection email to ${request.email}`);
+    await resend.emails.send({
+      from: 'Pelletion Battle Request <onboarding@resend.dev>',
+      to: [request.email],
+      subject: `Battle Request - Unable to Accommodate`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #6d28d9;">Battle Request Status Update</h1>
+          
+          <p>Hi ${request.name},</p>
+          
+          <p>Thank you for your interest in battling with Pelletion.</p>
+          
+          <p>Unfortunately, I won't be able to accommodate your request for <strong>${formattedDate}</strong> at <strong>${request.requestedTime}</strong>.</p>
+          
+          <p>Please feel free to submit another request for a different date and time. I look forward to the opportunity to battle with you soon!</p>
+          
+          <a href="https://pelletion.vercel.app" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #6d28d9; color: white; text-decoration: none; border-radius: 5px;">Submit New Request</a>
+          
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          
+          <p style="color: #6b7280; font-size: 14px;">
+            © ${new Date().getFullYear()} Pelletion. All rights reserved.
+          </p>
+        </div>
+      `,
+    });
+    
+    console.log(`Rejection email sent to ${request.email}`);
+  } catch (error) {
+    console.error('Error sending rejection email:', error);
+  }
+}
+
 // Get all battle requests
 async function getBattleRequests() {
   try {
@@ -246,32 +338,90 @@ export default async function handler(req: Request, res: Response) {
       }
     }
     
-    // POST method with update-status path to provide consistent API with the server
-    else if (req.method === 'POST' && req.url?.includes('update-status')) {
+    // POST method for updating the status
+    else if (req.method === 'POST' && (req.url?.includes('update-status') || req.body?.id)) {
       try {
-        console.log("Received status update data:", JSON.stringify(req.body));
+        console.log("Received status update request with data:", JSON.stringify(req.body));
         
-        // Extract data directly from the request body
-        const token = req.body.token;
-        const status = req.body.status;
+        // Handle both update formats (from API and from admin panel)
+        let battleRequestId, status, token;
         
-        if (!token || !status) {
-          return res.status(400).json({ error: "Token and status are required" });
+        // Format from admin panel
+        if (req.body.id && req.body.status) {
+          battleRequestId = req.body.id;
+          status = req.body.status;
+          
+          console.log(`Admin panel update: ID ${battleRequestId}, status ${status}`);
+          
+          // We don't have a token in this case, but we need to get the battle request by ID
+          // and then use its token
+          try {
+            const result = await db.execute(`
+              SELECT * FROM "battleRequests" 
+              WHERE "id" = ${parseInt(battleRequestId, 10)} 
+              LIMIT 1
+            `);
+            
+            if (!result.rows || result.rows.length === 0) {
+              console.error(`Battle request with ID ${battleRequestId} not found`);
+              return res.status(404).json({ error: "Battle request not found" });
+            }
+            
+            token = result.rows[0].token;
+            console.log(`Found token ${token} for battle request ID ${battleRequestId}`);
+          } catch (dbError) {
+            console.error(`Error getting battle request token for ID ${battleRequestId}:`, dbError);
+            return res.status(500).json({ 
+              error: "Failed to retrieve battle request information",
+              message: dbError.message || "Database error"
+            });
+          }
+        }
+        // Format from status update endpoint
+        else if (req.body.token && req.body.status) {
+          token = req.body.token;
+          status = req.body.status;
+          console.log(`API update: Token ${token}, status ${status}`);
+        }
+        else {
+          console.error("Invalid update request - missing required parameters");
+          return res.status(400).json({ 
+            error: "Missing required parameters", 
+            message: "Both ID/token and status are required" 
+          });
         }
         
         if (!['pending', 'confirmed', 'rejected'].includes(status)) {
-          return res.status(400).json({ error: "Status must be 'pending', 'confirmed', or 'rejected'" });
+          console.error(`Invalid status value: ${status}`);
+          return res.status(400).json({ 
+            error: "Invalid status value", 
+            message: "Status must be 'pending', 'confirmed', or 'rejected'" 
+          });
         }
         
         // Update the battle request status
         const updatedRequest = await updateBattleRequestStatus(token, status);
         
         if (!updatedRequest) {
-          console.error(`Battle request with token ${token} not found`);
-          return res.status(404).json({ error: "Battle request not found" });
+          console.error(`Battle request with token ${token} not found or update failed`);
+          return res.status(404).json({ error: "Battle request not found or update failed" });
         }
         
         console.log(`Battle request status updated to ${status} for ID: ${updatedRequest.id}`);
+        
+        // If this was from the admin panel, also send the appropriate email
+        if (battleRequestId && status === 'confirmed') {
+          console.log(`Sending confirmation email for battle request ID ${battleRequestId}`);
+          sendConfirmationEmail(updatedRequest).catch(err => {
+            console.error("Async confirmation email error:", err);
+          });
+        } else if (battleRequestId && status === 'rejected') {
+          console.log(`Sending rejection email for battle request ID ${battleRequestId}`);
+          sendRejectionEmail(updatedRequest).catch(err => {
+            console.error("Async rejection email error:", err);
+          });
+        }
+        
         return res.json(updatedRequest);
       } catch (error) {
         console.error("Error updating battle request status:", error);
