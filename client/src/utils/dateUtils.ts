@@ -42,22 +42,33 @@ export function formatTime(timeString: string): string {
 /**
  * Formats a Twitch-style duration string (like "1h24m35s") to a human-readable format
  */
-export function formatTwitchDuration(duration: string): string {
+export function formatTwitchDuration(duration: string | null | undefined): string {
+  // Handle undefined, null, or non-string values
+  if (!duration || typeof duration !== 'string') {
+    return '00:30'; // Default duration for clips
+  }
+  
   // Parse the duration string (e.g., "1h24m35s")
   const regex = /(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/;
-  const matches = duration.match(regex);
   
-  if (!matches) return duration;
-  
-  const hours = matches[1] ? parseInt(matches[1]) : 0;
-  const minutes = matches[2] ? parseInt(matches[2]) : 0;
-  const seconds = matches[3] ? parseInt(matches[3]) : 0;
-  
-  // Format as "HH:MM:SS" or "MM:SS" if there are no hours
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  } else {
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  try {
+    const matches = duration.match(regex);
+    
+    if (!matches) return '00:30'; // Default if no matches
+    
+    const hours = matches[1] ? parseInt(matches[1]) : 0;
+    const minutes = matches[2] ? parseInt(matches[2]) : 0;
+    const seconds = matches[3] ? parseInt(matches[3]) : 0;
+    
+    // Format as "HH:MM:SS" or "MM:SS" if there are no hours
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    } else {
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+  } catch (error) {
+    console.error('Error formatting Twitch duration:', error);
+    return '00:30'; // Default duration as fallback
   }
 }
 
