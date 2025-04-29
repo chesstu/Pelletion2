@@ -1,6 +1,6 @@
-import { storage } from '../server/storage';
+import { storage } from './storage';
 import type { Request, Response } from 'express';
-import { sendConfirmationEmail, sendRejectionEmail } from '../server/services/emailService';
+import { sendConfirmationEmail, sendRejectionEmail } from './emailService';
 
 export default async function handler(req: Request, res: Response) {
   // Only allow GET requests

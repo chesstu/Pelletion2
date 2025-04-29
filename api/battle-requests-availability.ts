@@ -1,4 +1,4 @@
-import { storage } from '../server/storage';
+import { storage } from './storage';
 import type { Request, Response } from 'express';
 
 // Define time slots from 2 PM to midnight
